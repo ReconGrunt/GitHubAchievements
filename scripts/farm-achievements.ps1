@@ -8,8 +8,9 @@
 #>
 param(
     [int]$Count = 128,
+    [int]$StartAt = 1,
     [string]$GhPath = "C:\Program Files\GitHub CLI\gh.exe",
-    [string]$CoAuthorTrailer = "Co-authored-by: Claude Sonnet 5 <noreply@anthropic.com>"
+    [string]$CoAuthorTrailer = "Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,7 +20,7 @@ $success = 0
 $failures = 0
 $consecutiveFailures = 0
 
-for ($i = 1; $i -le $Count; $i++) {
+for ($i = $StartAt; $i -le $Count; $i++) {
     try {
         git checkout -q main
         git pull -q --ff-only origin main
@@ -27,16 +28,20 @@ for ($i = 1; $i -le $Count; $i++) {
         $branch = "farm/$i"
         git checkout -q -b $branch
 
-        Add-Content -Path progress.log -Value "run $i"
-        git add progress.log
+        New-Item -ItemType Directory -Path progress -Force | Out-Null
+        Set-Content -Path "progress/run-$i.txt" -Value "run $i"
+        git add "progress/run-$i.txt"
         git commit -q -m "chore: progress entry $i" -m $CoAuthorTrailer
 
         git push -q -u origin $branch
+        if ($LASTEXITCODE -ne 0) { throw "git push failed with exit code $LASTEXITCODE" }
 
         $prUrl = & $gh pr create --title "chore: progress entry $i" --body $CoAuthorTrailer --head $branch --base main
+        if ($LASTEXITCODE -ne 0) { throw "gh pr create failed with exit code $LASTEXITCODE" }
         $prNumber = ($prUrl -split "/")[-1]
 
-        & $gh pr merge $prNumber --squash --delete-branch --body $CoAuthorTrailer --yes | Out-Null
+        & $gh pr merge $prNumber --squash --delete-branch --body $CoAuthorTrailer
+        if ($LASTEXITCODE -ne 0) { throw "gh pr merge failed with exit code $LASTEXITCODE" }
 
         git checkout -q main
         git branch -D $branch 2>$null | Out-Null
