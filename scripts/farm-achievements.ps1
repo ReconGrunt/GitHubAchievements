@@ -54,11 +54,18 @@ for ($i = $StartAt; $i -le $Count; $i++) {
         $consecutiveFailures++
         Write-Output "Iteration $i failed: $($_.Exception.Message)"
         git checkout -q main -f 2>$null
-        if ($consecutiveFailures -ge 5) {
-            Write-Output "Aborting after 5 consecutive failures."
+        git fetch -q origin main 2>$null
+        git reset -q --hard origin/main 2>$null
+        # Back off harder on likely rate-limit errors so the run can outlast a reset window.
+        $backoff = if ($_.Exception.Message -match "rate limit|secondary rate|abuse") { 90 } else { 3 }
+        Start-Sleep -Seconds $backoff
+        if ($consecutiveFailures -ge 25) {
+            Write-Output "Aborting after 25 consecutive failures."
             break
         }
     }
+
+    Start-Sleep -Milliseconds 300
 
     if ($i % 10 -eq 0) {
         Write-Output "Progress: $i / $Count (success=$success, failures=$failures)"
